@@ -1,36 +1,47 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+Image converter web app — upload JPG, PNG, GIF, BMP or TIFF images and convert them to modern **WebP** or **AVIF** format.
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Other scripts:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+pnpm build   # production build
+pnpm start   # run production build
+pnpm lint    # eslint
+```
 
-## Learn More
+## Architecture
 
-To learn more about Next.js, take a look at the following resources:
+Conversion happens server-side via [sharp](https://sharp.pixelplumbing.com/), not in the browser, for better quality/consistency and broader format support.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+app/
+├── page.tsx                    # Converter page (client UI)
+└── api/convert/route.ts        # POST /api/convert — thin handler: parse, validate, call service, map errors
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+components/converter/           # Dropzone, settings panel, file list, orchestrator
 
-## Deploy on Vercel
+lib/
+├── converter/                  # Client-side types + fetch helper for the API
+└── core/                       # Framework-agnostic conversion logic
+    ├── domain/types.ts         # ConversionOptions, ConversionResult, domain errors
+    ├── services/               # ImageProcessor interface + ConversionService (orchestration)
+    └── adapters/                # SharpImageProcessor (only place that imports sharp) + magic-byte type detection
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Layering rule: the API route never touches sharp directly — it calls `ConversionService`, which depends on the `ImageProcessor` interface implemented by `SharpImageProcessor`.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### API
+
+`POST /api/convert` — `multipart/form-data` with fields `file`, `format` (`webp` | `avif`), `quality` (1–100). Responds with the converted file as binary, plus `X-Original-Size` / `X-Converted-Size` headers. Errors: `400` invalid input, `413` file too large, `415` unsupported format, `500` unexpected.
+
+Limits: 25 MB per file, 20 files per batch (enforced client-side; server also enforces the size limit). Input type is verified by magic bytes, not file extension.
+
+No database or persistent storage — conversion is in-memory per request.
