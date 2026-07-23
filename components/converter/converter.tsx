@@ -5,6 +5,7 @@ import { Dropzone } from "./dropzone";
 import { SettingsPanel } from "./settings-panel";
 import { FileList } from "./file-list";
 import { convertFile } from "@/lib/converter/convert-file";
+import { zipResults } from "@/lib/converter/zip-results";
 import { MAX_FILE_SIZE, MAX_FILES } from "@/lib/converter/types";
 import type { ConvertSettings, FileJob } from "@/lib/converter/types";
 
@@ -13,8 +14,10 @@ export function Converter() {
   const [settings, setSettings] = React.useState<ConvertSettings>({
     format: "webp",
     quality: 80,
+    stripMetadata: true,
   });
   const [globalError, setGlobalError] = React.useState<string | null>(null);
+  const [zipping, setZipping] = React.useState(false);
 
   const isConverting = jobs.some((j) => j.status === "converting");
 
@@ -62,11 +65,15 @@ export function Converter() {
 
     for (const job of pending) {
       setJobs((prev) =>
-        prev.map((j) => (j.id === job.id ? { ...j, status: "converting", error: undefined } : j))
+        prev.map((j) =>
+          j.id === job.id ? { ...j, status: "converting", error: undefined, progress: 0 } : j
+        )
       );
 
       try {
-        const result = await convertFile(job.file, settings);
+        const result = await convertFile(job.file, settings, (progress) => {
+          setJobs((prev) => prev.map((j) => (j.id === job.id ? { ...j, progress } : j)));
+        });
         const resultUrl = URL.createObjectURL(result.blob);
         setJobs((prev) =>
           prev.map((j) =>
@@ -77,6 +84,7 @@ export function Converter() {
                   convertedSize: result.convertedSize,
                   resultUrl,
                   resultFilename: result.filename,
+                  resultBlob: result.blob,
                 }
               : j
           )
@@ -98,6 +106,22 @@ export function Converter() {
   };
 
   const hasConvertibleJobs = jobs.some((j) => j.status === "pending" || j.status === "error");
+  const doneJobs = jobs.filter((j) => j.status === "done");
+
+  const downloadAllAsZip = async () => {
+    setZipping(true);
+    try {
+      const blob = await zipResults(doneJobs);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "converted-images.zip";
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setZipping(false);
+    }
+  };
 
   return (
     <div className="flex w-full max-w-2xl flex-col gap-6">
@@ -113,13 +137,25 @@ export function Converter() {
       <FileList jobs={jobs} onRemove={removeJob} />
 
       {jobs.length > 0 && (
-        <button
-          onClick={convertAll}
-          disabled={!hasConvertibleJobs || isConverting}
-          className="self-start rounded-lg bg-primary px-6 py-2 text-sm font-semibold text-primary-foreground transition-colors disabled:pointer-events-none disabled:opacity-50"
-        >
-          {isConverting ? "Converting…" : `Convert ${jobs.length} file(s)`}
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={convertAll}
+            disabled={!hasConvertibleJobs || isConverting}
+            className="self-start rounded-lg bg-primary px-6 py-2 text-sm font-semibold text-primary-foreground transition-colors disabled:pointer-events-none disabled:opacity-50"
+          >
+            {isConverting ? "Converting…" : `Convert ${jobs.length} file(s)`}
+          </button>
+
+          {doneJobs.length > 1 && (
+            <button
+              onClick={downloadAllAsZip}
+              disabled={zipping}
+              className="self-start rounded-lg border border-border px-6 py-2 text-sm font-semibold transition-colors disabled:pointer-events-none disabled:opacity-50"
+            >
+              {zipping ? "Zipping…" : `Download all as ZIP (${doneJobs.length})`}
+            </button>
+          )}
+        </div>
       )}
     </div>
   );

@@ -65,7 +65,9 @@ export function FileList({ jobs, onRemove }: FileListProps) {
                   <span className="text-destructive">{job.error}</span>
                 )}
               </div>
-              {job.status === "converting" && <Progress value={undefined} className="h-1 w-40" />}
+              {job.status === "converting" && (
+                <Progress value={(job.progress ?? 0) * 100} className="h-1 w-40" />
+              )}
             </div>
 
             <div className="flex shrink-0 items-center gap-2">

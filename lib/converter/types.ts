@@ -11,11 +11,16 @@ export interface FileJob {
   convertedSize?: number;
   resultUrl?: string;
   resultFilename?: string;
+  resultBlob?: Blob;
+  progress?: number;
 }
 
 export interface ConvertSettings {
   format: OutputFormat;
   quality: number;
+  maxWidth?: number;
+  maxHeight?: number;
+  stripMetadata: boolean;
 }
 
 export const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25 MB
